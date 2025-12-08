@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Thatcher Effect App</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a2a6c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Thatcher">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231a2a6c' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🙃</text></svg>">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.5/dist/face-landmarks-detection.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            margin-top: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+        
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .input-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            background: linear-gradient(to right, #4A00E0, #8E2DE2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn:active {
+            transform: translateY(1px);
+        }
+        
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 0 auto;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 100%;
+            max-height: 100%;
+        }
+        
+        #originalCanvas {
+            z-index: 1;
+        }
+        
+        #processedCanvas {
+            z-index: 2;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .info-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .info-panel h2 {
+            margin-bottom: 10px;
+            font-size: 1.4rem;
+        }
+        
+        .info-panel ul {
+            padding-left: 20px;
+        }
+        
+        .info-panel li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #fff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .instructions h3 {
+            margin-bottom: 10px;
+        }
+        
+        .instructions ol {
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 15px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .input-section {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .canvas-container {
+                min-height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Thatcher Effect</h1>
+            <p class="subtitle">Detect faces, flip eyes and mouth upside down</p>
+        </header>
+        
+        <div class="app-container">
+            <div class="input-section">
+                <button id="uploadBtn" class="btn">
+                    <i>📷</i> Take Photo or Upload
+                </button>
+                <input type="file" id="fileInput" accept="image/*" capture="environment">
+            </div>
+            
+            <div class="canvas-container">
+                <canvas id="originalCanvas"></canvas>
+                <canvas id="processedCanvas"></canvas>
+            </div>
+            
+            <div class="status" id="status">Upload an image or use camera to begin</div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing image...</p>
+            </div>
+            
+            <div class="controls">
+                <button id="processBtn" class="btn" disabled>
+                    <i>⚡</i> Apply Thatcher Effect
+                </button>
+                <button id="resetBtn" class="btn">
+                    <i>🔄</i> Reset
+                </button>
+            </div>
+            
+            <div class="instructions">
+                <h3>How to Use:</h3>
+                <ol>
+                    <li>Tap the button to take a photo or choose from gallery</li>
+                    <li>Click "Apply Thatcher Effect" to process the image</li>
+                    <li>See the face with eyes and mouth flipped upside down</li>
+                </ol>
+            </div>
+            
+            <div class="info-panel">
+                <h2>About the Thatcher Effect</h2>
+                <p>The Thatcher effect is a perceptual illusion where a face with inverted features (eyes and mouth) appears normal when viewed as a whole, but becomes grotesque when viewed in parts.</p>
+                <p>This app uses TensorFlow.js to detect facial landmarks and applies the effect by flipping the eyes and mouth upside down.</p>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>Works offline after initial load | Uses TensorFlow.js for face detection</p>
+    </footer>
+
+    <script>
+        // DOM elements
+        const originalCanvas = document.getElementById('originalCanvas');
+        const processedCanvas = document.getElementById('processedCanvas');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const processBtn = document.getElementById('processBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const statusEl = document.getElementById('status');
+        const loadingEl = document.getElementById('loading');
+        
+        // Canvas contexts
+        const originalCtx = originalCanvas.getContext('2d');
+        const processedCtx = processedCanvas.getContext('2d');
+        const canvasContainer = document.querySelector('.canvas-container');
+        
+        // State variables
+        let currentImage = null;
+        let faceLandmarks = null;
+        let model = null;
+        
+        // Update canvas container to maintain aspect ratio
+        function updateCanvasContainer(width, height) {
+            const containerWidth = canvasContainer.clientWidth;
+            const aspectRatio = height / width;
+            const newHeight = Math.min(containerWidth * aspectRatio, 600); // Max height 600px
+            canvasContainer.style.height = newHeight + 'px';
+        }
+        
+        // MediaPipe FaceMesh landmark indices
+        // Left eye contour
+        const LEFT_EYE_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
+        // Right eye contour
+        const RIGHT_EYE_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398];
+        // Lips contour (outer)
+        const LIPS_INDICES = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185];
+        
+        // Initialize the app
+        async function init() {
+            try {
+                statusEl.textContent = "Loading face detection model...";
+                
+                const modelConfig = {
+                    runtime: 'tfjs',
+                    refineLandmarks: true,
+                    maxFaces: 1
+                };
+                
+                model = await faceLandmarksDetection.createDetector(
+                    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+                    modelConfig
+                );
+                
+                statusEl.textContent = "Model loaded. Upload an image or use camera.";
+                processBtn.disabled = false;
+            } catch (error) {
+                console.error("Error loading model:", error);
+                statusEl.textContent = "Error loading model. Please refresh the page.";
+            }
+        }
+        
+        // Handle file upload
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    loadImage(event.target.result);
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+        
+        // Load image from URL
+        function loadImage(src) {
+            const img = new Image();
+            img.onload = () => {
+                originalCanvas.width = img.width;
+                originalCanvas.height = img.height;
+                processedCanvas.width = img.width;
+                processedCanvas.height = img.height;
+                
+                // Update container aspect ratio
+                updateCanvasContainer(img.width, img.height);
+                
+                originalCtx.drawImage(img, 0, 0);
+                
+                // Clear processed canvas
+                processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+                
+                currentImage = originalCanvas;
+                statusEl.textContent = "Image loaded. Click 'Apply Thatcher Effect' to process.";
+            };
+            img.src = src;
+        }
+        
+        // Process the image
+        processBtn.addEventListener('click', async () => {
+            if (!currentImage) {
+                statusEl.textContent = "Please upload an image first.";
+                return;
+            }
+            
+            try {
+                loadingEl.style.display = 'block';
+                statusEl.textContent = "Detecting face...";
+                
+                const predictions = await model.estimateFaces(originalCanvas);
+                
+                if (predictions.length === 0) {
+                    statusEl.textContent = "No face detected. Try another image.";
+                    loadingEl.style.display = 'none';
+                    return;
+                }
+                
+                faceLandmarks = predictions[0].keypoints;
+                statusEl.textContent = "Face detected. Applying Thatcher effect...";
+                
+                applyThatcherEffect();
+                
+                statusEl.textContent = "Thatcher effect applied!";
+                loadingEl.style.display = 'none';
+            } catch (error) {
+                console.error("Error processing image:", error);
+                statusEl.textContent = "Error processing image. Please try again.";
+                loadingEl.style.display = 'none';
+            }
+        });
+        
+        // Get bounding box from landmark indices with padding
+        function getBoundingBox(indices, padding = 1.3) {
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            
+            for (const idx of indices) {
+                const point = faceLandmarks[idx];
+                if (point) {
+                    minX = Math.min(minX, point.x);
+                    maxX = Math.max(maxX, point.x);
+                    minY = Math.min(minY, point.y);
+                    maxY = Math.max(maxY, point.y);
+                }
+            }
+            
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            
+            // Apply padding
+            const paddedWidth = width * padding;
+            const paddedHeight = height * padding;
+            
+            return {
+                x: Math.floor(centerX - paddedWidth / 2),
+                y: Math.floor(centerY - paddedHeight / 2),
+                width: Math.ceil(paddedWidth),
+                height: Math.ceil(paddedHeight),
+                centerX,
+                centerY
+            };
+        }
+        
+        // Apply the Thatcher effect
+        function applyThatcherEffect() {
+            // Clear and draw original image to processed canvas
+            processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+            processedCtx.drawImage(originalCanvas, 0, 0);
+            
+            if (!faceLandmarks) return;
+            
+            // Get bounding boxes for eyes and mouth
+            const leftEyeBox = getBoundingBox(LEFT_EYE_INDICES, 1.5);
+            const rightEyeBox = getBoundingBox(RIGHT_EYE_INDICES, 1.5);
+            const mouthBox = getBoundingBox(LIPS_INDICES, 1.4);
+            
+            // Flip each region
+            flipRegion(leftEyeBox);
+            flipRegion(rightEyeBox);
+            flipRegion(mouthBox);
+        }
+        
+        // Flip a region vertically and composite with feathered edge
+        function flipRegion(box) {
+            // Clamp box to canvas bounds
+            const x = Math.max(0, box.x);
+            const y = Math.max(0, box.y);
+            const width = Math.min(box.width, processedCanvas.width - x);
+            const height = Math.min(box.height, processedCanvas.height - y);
+            
+            if (width <= 0 || height <= 0) return;
+            
+            // Create a temporary canvas for the region
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // Extract the region from the original image
+            tempCtx.drawImage(originalCanvas, x, y, width, height, 0, 0, width, height);
+            
+            // Flip the region vertically
+            const flippedCanvas = document.createElement('canvas');
+            flippedCanvas.width = width;
+            flippedCanvas.height = height;
+            const flippedCtx = flippedCanvas.getContext('2d');
+            
+            flippedCtx.translate(0, height);
+            flippedCtx.scale(1, -1);
+            flippedCtx.drawImage(tempCanvas, 0, 0);
+            
+            // Create a feathered elliptical mask
+            const maskCanvas = document.createElement('canvas');
+            maskCanvas.width = width;
+            maskCanvas.height = height;
+            const maskCtx = maskCanvas.getContext('2d');
+            
+            // Create radial gradient for feathering
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radiusX = width / 2;
+            const radiusY = height / 2;
+            
+            // Draw elliptical gradient mask
+            maskCtx.save();
+            maskCtx.beginPath();
+            maskCtx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+            
+            // Create gradient for soft edges
+            const gradient = maskCtx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.max(radiusX, radiusY)
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.6, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.85, 'rgba(255, 255, 255, 0.5)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            
+            maskCtx.fillStyle = gradient;
+            maskCtx.fill();
+            maskCtx.restore();
+            
+            // Apply mask to flipped image
+            const resultCanvas = document.createElement('canvas');
+            resultCanvas.width = width;
+            resultCanvas.height = height;
+            const resultCtx = resultCanvas.getContext('2d');
+            
+            // Draw the flipped image
+            resultCtx.drawImage(flippedCanvas, 0, 0);
+            
+            // Apply mask using destination-in composite
+            resultCtx.globalCompositeOperation = 'destination-in';
+            resultCtx.drawImage(maskCanvas, 0, 0);
+            
+            // Draw the masked flipped region onto the processed canvas
+            // First, we need to "punch a hole" in the original where the region will go
+            // Use destination-out to create a hole with soft edges
+            processedCtx.globalCompositeOperation = 'destination-out';
+            processedCtx.drawImage(maskCanvas, x, y);
+            
+            // Now draw the flipped region
+            processedCtx.globalCompositeOperation = 'source-over';
+            processedCtx.drawImage(resultCanvas, x, y);
+        }
+        
+        // Reset the app
+        resetBtn.addEventListener('click', () => {
+            originalCtx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
+            processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+            currentImage = null;
+            faceLandmarks = null;
+            statusEl.textContent = "Reset complete. Upload an image or use camera.";
+        });
+        
+        // Register Service Worker for offline support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('ServiceWorker registered:', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('ServiceWorker registration failed:', error);
+                    });
+            });
+        }
+        
+        // Initialize the app
+        init();
+    </script>
+</body>
+</html>
