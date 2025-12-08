@@ -1,26 +1,14 @@
-const CACHE_NAME = 'thatcher-effect-v1';
-const ASSETS_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js',
-  'https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.5/dist/face-landmarks-detection.min.js'
-];
+const CACHE_NAME = 'thatcher-effect-v2';
 
-// Install event - cache assets
+// Install event - skip waiting to activate immediately
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Caching app assets');
-        return cache.addAll(ASSETS_TO_CACHE);
-      })
-      .then(() => self.skipWaiting())
-  );
+  console.log('Service Worker installing...');
+  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - claim clients and clean old caches
 self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -35,31 +23,29 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - serve from cache, fall back to network
+// Fetch event - NETWORK FIRST, then cache
+// This ensures we cache ALL resources including dynamically loaded model files
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        if (response) {
-          return response;
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Got a response from network - cache it for offline use
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
-        
-        return fetch(event.request).then((networkResponse) => {
-          // Cache successful responses for future offline use
-          if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-          }
-          return networkResponse;
-        });
+        return networkResponse;
       })
       .catch(() => {
-        // If both cache and network fail, return a fallback
-        console.log('Fetch failed for:', event.request.url);
+        // Network failed - try to serve from cache
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          console.log('No cache for:', event.request.url);
+        });
       })
   );
 });
-
