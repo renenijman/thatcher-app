@@ -1,9 +1,23 @@
-const CACHE_NAME = 'thatcher-effect-v2';
+const CACHE_NAME = 'thatcher-effect-v3';
 
-// Install event - skip waiting to activate immediately
+// Files that MUST be cached for offline to work
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json'
+];
+
+// Install event - pre-cache core assets
 self.addEventListener('install', (event) => {
   console.log('Service Worker installing...');
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Pre-caching core assets');
+        return cache.addAll(CORE_ASSETS);
+      })
+      .then(() => self.skipWaiting())
+  );
 });
 
 // Activate event - claim clients and clean old caches
@@ -23,29 +37,53 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - NETWORK FIRST, then cache
-// This ensures we cache ALL resources including dynamically loaded model files
+// Fetch event - CACHE FIRST for same-origin, NETWORK FIRST for external
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        // Got a response from network - cache it for offline use
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+  const url = new URL(event.request.url);
+  
+  // For same-origin requests (our HTML, manifest, etc.) - cache first
+  if (url.origin === location.origin) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          // Return cache, but also update cache in background
+          fetch(event.request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, networkResponse);
+              });
+            }
+          }).catch(() => {});
+          return cachedResponse;
         }
-        return networkResponse;
-      })
-      .catch(() => {
-        // Network failed - try to serve from cache
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
+        // Not in cache - fetch from network and cache it
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
           }
-          console.log('No cache for:', event.request.url);
+          return networkResponse;
         });
       })
-  );
+    );
+  } else {
+    // For external requests (CDN scripts, model files) - network first, cache fallback
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request);
+        })
+    );
+  }
 });
