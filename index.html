@@ -172,11 +172,18 @@
         }
         
         .status {
-            text-align: center;
+            text-align: left;
             padding: 10px;
             margin: 10px 0;
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.1);
+            min-height: 100px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
         
         .loading {
@@ -346,38 +353,36 @@
         // Lips contour (outer)
         const LIPS_INDICES = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185];
         
+        // Log function that appends to status
+        function log(msg) {
+            statusEl.textContent += msg + "\n";
+            statusEl.scrollTop = statusEl.scrollHeight;
+            console.log(msg);
+        }
+        
         // Initialize the app
         async function init() {
+            statusEl.textContent = "";
+            
             try {
-                statusEl.textContent = "Step 1: Checking libraries...";
-                
-                // Check if TensorFlow.js loaded
+                log("1. Checking TensorFlow.js...");
                 if (typeof tf === 'undefined') {
                     throw new Error('TensorFlow.js not loaded');
                 }
+                log("   TF version: " + tf.version.tfjs);
                 
-                // Check if face detection library loaded
+                log("2. Checking face detection lib...");
                 if (typeof faceLandmarksDetection === 'undefined') {
                     throw new Error('Face detection library not loaded');
                 }
+                log("   OK");
                 
-                statusEl.textContent = "Step 2: Testing network...";
-                
-                // Test if we can fetch from the CDN
-                try {
-                    const testFetch = await fetch('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.binarypb', { method: 'HEAD' });
-                    statusEl.textContent = "Step 2: Network OK (" + testFetch.status + ")";
-                } catch (netErr) {
-                    statusEl.textContent = "Step 2: Network test failed - " + netErr.message;
-                    throw new Error('Cannot reach model server: ' + netErr.message);
-                }
-                
-                statusEl.textContent = "Step 3: Initializing TensorFlow...";
-                
-                // Wait for TensorFlow to be ready
+                log("3. Initializing TF backend...");
                 await tf.ready();
+                log("   Backend: " + tf.getBackend());
                 
-                statusEl.textContent = "Step 4: Backend = " + tf.getBackend() + ". Loading model...";
+                log("4. Loading face model...");
+                log("   This may take 30+ seconds...");
                 
                 const modelConfig = {
                     runtime: 'tfjs',
@@ -390,12 +395,13 @@
                     modelConfig
                 );
                 
-                statusEl.textContent = "Ready! Tap to take photo or upload.";
+                log("5. SUCCESS! Ready to use.");
                 processBtn.disabled = false;
             } catch (error) {
-                console.error("Error:", error);
-                let msg = "Error at " + statusEl.textContent.split(':')[0] + ": " + error.message;
-                statusEl.textContent = msg;
+                log("ERROR: " + error.message);
+                if (error.stack) {
+                    log("Stack: " + error.stack.substring(0, 200));
+                }
             }
         }
         
