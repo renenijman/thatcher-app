@@ -349,23 +349,39 @@
         // Initialize the app
         async function init() {
             try {
-                statusEl.textContent = "Loading face detection model...";
+                statusEl.textContent = "Step 1: Checking libraries...";
                 
                 // Check if TensorFlow.js loaded
                 if (typeof tf === 'undefined') {
-                    throw new Error('TensorFlow.js failed to load. Check internet connection.');
+                    throw new Error('TensorFlow.js not loaded');
                 }
                 
                 // Check if face detection library loaded
                 if (typeof faceLandmarksDetection === 'undefined') {
-                    throw new Error('Face detection library failed to load. Check internet connection.');
+                    throw new Error('Face detection library not loaded');
                 }
                 
-                statusEl.textContent = "Libraries loaded. Initializing model...";
+                statusEl.textContent = "Step 2: Testing network...";
+                
+                // Test if we can fetch from the CDN
+                try {
+                    const testFetch = await fetch('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.binarypb', { method: 'HEAD' });
+                    statusEl.textContent = "Step 2: Network OK (" + testFetch.status + ")";
+                } catch (netErr) {
+                    statusEl.textContent = "Step 2: Network test failed - " + netErr.message;
+                    throw new Error('Cannot reach model server: ' + netErr.message);
+                }
+                
+                statusEl.textContent = "Step 3: Initializing TensorFlow...";
+                
+                // Wait for TensorFlow to be ready
+                await tf.ready();
+                
+                statusEl.textContent = "Step 4: Backend = " + tf.getBackend() + ". Loading model...";
                 
                 const modelConfig = {
                     runtime: 'tfjs',
-                    refineLandmarks: true,
+                    refineLandmarks: false,
                     maxFaces: 1
                 };
                 
@@ -374,11 +390,12 @@
                     modelConfig
                 );
                 
-                statusEl.textContent = "Model loaded. Tap button to take photo or upload.";
+                statusEl.textContent = "Ready! Tap to take photo or upload.";
                 processBtn.disabled = false;
             } catch (error) {
-                console.error("Error loading model:", error);
-                statusEl.textContent = "Error: " + error.message;
+                console.error("Error:", error);
+                let msg = "Error at " + statusEl.textContent.split(':')[0] + ": " + error.message;
+                statusEl.textContent = msg;
             }
         }
         
