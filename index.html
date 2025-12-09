@@ -281,6 +281,8 @@
             
             <div class="status" id="status">Upload an image or use camera to begin</div>
             
+            <textarea id="debugLog" readonly style="width:100%; height:150px; background:#111; color:#0f0; font-family:monospace; font-size:12px; padding:10px; border-radius:8px; border:1px solid #333; margin:10px 0;"></textarea>
+            
             <div class="loading" id="loading">
                 <div class="spinner"></div>
                 <p>Processing image...</p>
@@ -353,36 +355,53 @@
         // Lips contour (outer)
         const LIPS_INDICES = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185];
         
-        // Log function that appends to status
+        // Debug log textarea
+        const debugLog = document.getElementById('debugLog');
+        
         function log(msg) {
-            statusEl.textContent += msg + "\n";
-            statusEl.scrollTop = statusEl.scrollHeight;
+            const time = new Date().toLocaleTimeString();
+            debugLog.value += "[" + time + "] " + msg + "\n";
+            debugLog.scrollTop = debugLog.scrollHeight;
             console.log(msg);
         }
         
+        // Intercept fetch to log all URLs being fetched
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            const url = args[0]?.url || args[0];
+            log("FETCH: " + (typeof url === 'string' ? url.substring(0, 80) : 'Request object'));
+            try {
+                const response = await originalFetch.apply(this, args);
+                log("  -> OK: " + response.status);
+                return response;
+            } catch (err) {
+                log("  -> FAILED: " + err.message);
+                throw err;
+            }
+        };
+        
         // Initialize the app
         async function init() {
-            statusEl.textContent = "";
+            log("=== STARTING INIT ===");
             
             try {
-                log("1. Checking TensorFlow.js...");
+                log("Step 1: Checking TensorFlow.js...");
                 if (typeof tf === 'undefined') {
                     throw new Error('TensorFlow.js not loaded');
                 }
-                log("   TF version: " + tf.version.tfjs);
+                log("  TF version: " + tf.version.tfjs);
                 
-                log("2. Checking face detection lib...");
+                log("Step 2: Checking face detection lib...");
                 if (typeof faceLandmarksDetection === 'undefined') {
                     throw new Error('Face detection library not loaded');
                 }
-                log("   OK");
+                log("  Version OK");
                 
-                log("3. Initializing TF backend...");
+                log("Step 3: Initializing TF backend...");
                 await tf.ready();
-                log("   Backend: " + tf.getBackend());
+                log("  Backend: " + tf.getBackend());
                 
-                log("4. Loading face model...");
-                log("   This may take 30+ seconds...");
+                log("Step 4: Loading face model (may take 30s)...");
                 
                 const modelConfig = {
                     runtime: 'tfjs',
@@ -395,13 +414,18 @@
                     modelConfig
                 );
                 
-                log("5. SUCCESS! Ready to use.");
+                log("Step 5: SUCCESS!");
+                statusEl.textContent = "Ready! Tap to take photo or upload.";
                 processBtn.disabled = false;
+                
             } catch (error) {
-                log("ERROR: " + error.message);
+                log("=== ERROR ===");
+                log("Message: " + error.message);
+                log("Name: " + error.name);
                 if (error.stack) {
-                    log("Stack: " + error.stack.substring(0, 200));
+                    log("Stack:\n" + error.stack);
                 }
+                statusEl.textContent = "Error - see log below";
             }
         }
         
