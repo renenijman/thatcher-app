@@ -351,6 +351,18 @@
             try {
                 statusEl.textContent = "Loading face detection model...";
                 
+                // Check if TensorFlow.js loaded
+                if (typeof tf === 'undefined') {
+                    throw new Error('TensorFlow.js failed to load. Check internet connection.');
+                }
+                
+                // Check if face detection library loaded
+                if (typeof faceLandmarksDetection === 'undefined') {
+                    throw new Error('Face detection library failed to load. Check internet connection.');
+                }
+                
+                statusEl.textContent = "Libraries loaded. Initializing model...";
+                
                 const modelConfig = {
                     runtime: 'tfjs',
                     refineLandmarks: true,
@@ -362,11 +374,11 @@
                     modelConfig
                 );
                 
-                statusEl.textContent = "Model loaded. Upload an image or use camera.";
+                statusEl.textContent = "Model loaded. Tap button to take photo or upload.";
                 processBtn.disabled = false;
             } catch (error) {
                 console.error("Error loading model:", error);
-                statusEl.textContent = "Error loading model. Please refresh the page.";
+                statusEl.textContent = "Error: " + error.message;
             }
         }
         
